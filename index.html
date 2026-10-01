@@ -73,8 +73,9 @@ select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px s
 .step.is-p .tag { background: var(--bg); color: var(--muted); }
 .val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 0.9rem; }
 .px { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--muted); }
-.spec { overflow-x: auto; white-space: nowrap; line-height: 1.15; font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; scrollbar-width: thin; padding-block: 2px; }
-.step.is-p .spec { font-family: var(--font-body); font-weight: 400; letter-spacing: 0; }
+.spec { overflow-x: auto; white-space: nowrap; line-height: 1.15; font-family: var(--spec-head, var(--font-display)); font-weight: 600; letter-spacing: -0.01em; scrollbar-width: thin; padding-block: 2px; }
+.step.is-p .spec { font-family: var(--spec-body, var(--font-body)); font-weight: 400; letter-spacing: 0; white-space: normal; overflow: hidden; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; max-width: 70ch; }
+.hint.err { color: #c2410c; }
 .divider { display: flex; align-items: center; gap: 10px; padding: 10px 0 4px; border-top: 1px dashed var(--line); font-size: 0.72rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
 @media (max-width: 560px) {
   .step { grid-template-columns: auto auto 1fr; row-gap: 6px; }
@@ -137,7 +138,21 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
       </div>
 
       <div class="field">
-        <label for="sample">Preview text</label>
+        <label for="hFont">Heading font (h1–h6, display)</label>
+        <select id="hFont"></select>
+        <input class="custom" id="hFontCustom" type="text" placeholder="Any Google Fonts family, e.g. Sora" aria-label="Custom heading font" hidden>
+        <span class="hint" id="hFontHint" aria-live="polite"></span>
+      </div>
+
+      <div class="field">
+        <label for="bFont">Body font (p)</label>
+        <select id="bFont"></select>
+        <input class="custom" id="bFontCustom" type="text" placeholder="Any Google Fonts family, e.g. Figtree" aria-label="Custom body font" hidden>
+        <span class="hint" id="bFontHint" aria-live="polite"></span>
+      </div>
+
+      <div class="field">
+        <label for="sample">Heading preview text</label>
         <input id="sample" type="text" value="Visual hierarchy">
       </div>
 
@@ -182,12 +197,39 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
     ["1.618", "Golden Ratio"],
     ["custom", "Custom…"]
   ];
+  // Curated Google Fonts: [group, fallback stack, [[family, weights]]]
+  const FONTS = [
+    ["Sans serif", "system-ui, sans-serif", [
+      ["Inter", "400;600;700"], ["Roboto", "400;500;700"], ["Open Sans", "400;600;700"], ["Lato", "400;700"],
+      ["Montserrat", "400;600;700"], ["Poppins", "400;600;700"], ["Nunito", "400;600;700"], ["Work Sans", "400;600;700"],
+      ["DM Sans", "400;600;700"], ["Manrope", "400;600;700"], ["IBM Plex Sans", "400;600;700"], ["Source Sans 3", "400;600;700"],
+      ["Bricolage Grotesque", "400;600;700"], ["Space Grotesk", "400;600;700"], ["Outfit", "400;600;700"], ["Raleway", "400;600;700"]
+    ]],
+    ["Serif", "Georgia, serif", [
+      ["Playfair Display", "400;600;700"], ["Merriweather", "400;700"], ["Lora", "400;600;700"], ["Libre Baskerville", "400;700"],
+      ["EB Garamond", "400;600;700"], ["Source Serif 4", "400;600;700"], ["Fraunces", "400;600;700"], ["Crimson Pro", "400;600;700"],
+      ["DM Serif Display", "400"]
+    ]],
+    ["Display", "system-ui, sans-serif", [
+      ["Oswald", "400;600;700"], ["Bebas Neue", "400"], ["Abril Fatface", "400"], ["Archivo Black", "400"], ["Syne", "400;600;700"]
+    ]],
+    ["Monospace", "ui-monospace, monospace", [
+      ["JetBrains Mono", "400;600;700"], ["IBM Plex Mono", "400;600;700"], ["Space Mono", "400;700"]
+    ]]
+  ];
+  const FONT_INFO = {};
+  FONTS.forEach(([, fallback, list]) => list.forEach(([f, w]) => FONT_INFO[f] = { weights: w, fallback }));
+  const LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse.";
+  const SYSTEM_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
   const $ = (id) => document.getElementById(id);
   const els = {
     base: $("base"), unit: $("unit"), hScale: $("hScale"), dScale: $("dScale"),
     hCustom: $("hCustom"), dCustom: $("dCustom"), decimals: $("decimals"), sample: $("sample"),
+    hFont: $("hFont"), hFontCustom: $("hFontCustom"), bFont: $("bFont"), bFontCustom: $("bFontCustom"),
     ladder: $("ladder"), code: $("code"), formula: $("formula"), summary: $("summary"), codenote: $("codenote")
   };
+  const SAVED_KEYS = ["base", "unit", "hScale", "dScale", "hCustom", "dCustom", "decimals", "sample", "hFont", "hFontCustom", "bFont", "bFontCustom"];
   let fmt = "scss";
 
   for (const sel of [els.hScale, els.dScale]) {
@@ -201,16 +243,75 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
   els.hScale.value = "1.200";
   els.dScale.value = "1.125";
 
+  for (const sel of [els.hFont, els.bFont]) {
+    sel.appendChild(new Option("System UI (no web font)", "system"));
+    for (const [group, , list] of FONTS) {
+      const og = document.createElement("optgroup");
+      og.label = group;
+      list.forEach(([f]) => og.appendChild(new Option(f, f)));
+      sel.appendChild(og);
+    }
+    sel.appendChild(new Option("Other Google Font…", "custom"));
+  }
+  els.hFont.value = "Montserrat";
+  els.bFont.value = "Montserrat";
+
   // Restore last settings (per-viewer convenience only)
   try {
     const saved = JSON.parse(localStorage.getItem("bs-typescale") || "null");
     if (saved) {
-      for (const k of ["base", "unit", "hScale", "dScale", "hCustom", "dCustom", "decimals", "sample"]) {
+      for (const k of SAVED_KEYS) {
         if (saved[k] != null) els[k].value = saved[k];
       }
       if (saved.fmt) fmt = saved.fmt;
     }
   } catch (e) {}
+  if (!els.hFont.value) els.hFont.value = "Montserrat";
+  if (!els.bFont.value) els.bFont.value = "Montserrat";
+
+  // Selected font as { family, weights, stack }, or null for the system stack
+  function fontOf(sel, custom) {
+    if (sel.value === "system") return null;
+    if (sel.value === "custom") {
+      const family = custom.value.trim().replace(/\s+/g, " ").replace(/["'<>]/g, "");
+      return family ? { family, weights: "", stack: `"${family}", ${SYSTEM_STACK}` } : null;
+    }
+    const info = FONT_INFO[sel.value];
+    return { family: sel.value, weights: info.weights, stack: `"${sel.value}", ${info.fallback}` };
+  }
+
+  function familyParam(font) {
+    return "family=" + encodeURIComponent(font.family).replace(/%20/g, "+") + (font.weights ? ":wght@" + font.weights : "");
+  }
+  function fontsHref(fonts) {
+    const params = [...new Set(fonts.filter(Boolean).map(familyParam))];
+    return params.length ? `https://fonts.googleapis.com/css2?${params.join("&")}&display=swap` : "";
+  }
+
+  const fontLinks = {}; // familyParam -> "loading" | "ok" | "error"
+  const loadTimers = {};
+  function loadFont(font, hintEl, delay) {
+    if (!font) { hintEl.textContent = ""; hintEl.classList.remove("err"); return; }
+    const key = familyParam(font);
+    const report = () => {
+      const state = fontLinks[key];
+      hintEl.classList.toggle("err", state === "error");
+      hintEl.textContent = state === "error" ? `“${font.family}” isn't on Google Fonts. Check the spelling.` :
+        state === "loading" ? "Loading…" : "";
+    };
+    clearTimeout(loadTimers[hintEl.id]);
+    if (fontLinks[key]) return report();
+    loadTimers[hintEl.id] = setTimeout(() => {
+      fontLinks[key] = "loading";
+      report();
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = `https://fonts.googleapis.com/css2?${key}&display=swap`;
+      link.onload = () => { fontLinks[key] = "ok"; report(); };
+      link.onerror = () => { fontLinks[key] = "error"; link.remove(); report(); };
+      document.head.appendChild(link);
+    }, delay);
+  }
 
   function ratio(sel, custom) {
     const v = sel.value === "custom" ? parseFloat(custom.value) : parseFloat(sel.value);
@@ -246,6 +347,16 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
     const dec = parseInt(els.decimals.value, 10);
     const sample = els.sample.value || "Aa";
 
+    els.hFontCustom.hidden = els.hFont.value !== "custom";
+    els.bFontCustom.hidden = els.bFont.value !== "custom";
+    const hFont = fontOf(els.hFont, els.hFontCustom);
+    const bFont = fontOf(els.bFont, els.bFontCustom);
+    // Debounce typed family names so partial words don't each hit Google Fonts
+    loadFont(hFont, $("hFontHint"), els.hFont.value === "custom" ? 500 : 0);
+    loadFont(bFont, $("bFontHint"), els.bFont.value === "custom" ? 500 : 0);
+    els.ladder.style.setProperty("--spec-head", hFont ? hFont.stack : SYSTEM_STACK);
+    els.ladder.style.setProperty("--spec-body", bFont ? bFont.stack : SYSTEM_STACK);
+
     els.ladder.textContent = "";
     rows.forEach((r, idx) => {
       if (idx === 6) {
@@ -264,7 +375,7 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
       px.textContent = unit === "px" ? round(r.rem, 3) + "rem" : Math.round(r.rem * base) + "px";
       const spec = document.createElement("div"); spec.className = "spec";
       spec.style.fontSize = (r.rem * base) + "px";
-      spec.textContent = sample;
+      spec.textContent = r.kind === "p" ? LOREM : sample;
       row.append(tag, val, px, spec);
       els.ladder.appendChild(row);
     });
@@ -275,7 +386,7 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
       `display-<i>n</i> = h1 × ${d}<sup>7−n</sup><br>` +
       `1rem = ${base}px`;
 
-    els.code.textContent = buildCode(rows, base, unit, dec);
+    els.code.textContent = buildCode(rows, base, unit, dec, hFont, bFont);
     els.codenote.textContent = {
       scss: "Set these before @import \"bootstrap\". Bootstrap's RFS shrinks the larger sizes on narrow screens automatically.",
       css: "Custom properties you can reference anywhere, e.g. font-size: var(--fs-display-1).",
@@ -284,15 +395,17 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
     document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.fmt === fmt)));
 
     try {
-      localStorage.setItem("bs-typescale", JSON.stringify({
-        base: els.base.value, unit: els.unit.value, hScale: els.hScale.value, dScale: els.dScale.value,
-        hCustom: els.hCustom.value, dCustom: els.dCustom.value, decimals: els.decimals.value,
-        sample: els.sample.value, fmt
-      }));
+      const state = { fmt };
+      SAVED_KEYS.forEach(k => state[k] = els[k].value);
+      localStorage.setItem("bs-typescale", JSON.stringify(state));
     } catch (e) {}
   }
 
-  function buildCode(rows, base, unit, dec) {
+  function buildCode(rows, base, unit, dec, hFont, bFont) {
+    const href = fontsHref([hFont, bFont]);
+    const imp = href ? `@import url("${href}");\n` : "";
+    const hStack = hFont ? hFont.stack : SYSTEM_STACK;
+    const bStack = bFont ? bFont.stack : SYSTEM_STACK;
     const v = (r) => fmtVal(r.rem, base, unit, dec);
     const disp = rows.filter(r => r.kind === "d");
     const heads = rows.filter(r => r.kind === "h");
@@ -303,7 +416,10 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
     const header = `Headings: ${scaleLabel(els.hScale, els.hCustom)} · Display: ${scaleLabel(els.dScale, els.dCustom)} · base ${base}px`;
 
     if (fmt === "scss") {
-      let out = `// ${header}\n`;
+      let out = `// ${header}\n${imp}\n`;
+      out += `$font-family-base: ${bStack};\n`;
+      out += `$headings-font-family: ${hStack};\n`;
+      out += `$display-font-family: ${hStack};\n\n`;
       out += `$font-size-base: ${unit === "px" ? base + "px" : "1rem"};\n\n`;
       heads.forEach(r => out += `$${r.key}-font-size: ${v(r)};\n`);
       out += `\n$display-font-sizes: (\n`;
@@ -312,13 +428,16 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
       return out;
     }
     if (fmt === "css") {
-      let out = `/* ${header} */\n:root {\n`;
+      let out = `${imp}/* ${header} */\n:root {\n`;
+      out += `  --ff-heading: ${hStack};\n  --ff-body: ${bStack};\n\n`;
       disp.forEach(r => out += `  --fs-${r.key}: ${v(r)};\n`);
       heads.forEach(r => out += `  --fs-${r.key}: ${v(r)};\n`);
       out += `  --fs-p: ${v(rows[rows.length - 1])};\n}`;
       return out;
     }
-    let out = `/* ${header} */\n`;
+    let out = `${imp}/* ${header} */\n`;
+    out += `body { font-family: ${bStack}; }\n`;
+    out += `${heads.map(r => `${r.key}, .${r.key}`).join(", ")},\n${disp.map(r => `.${r.key}`).join(", ")} { font-family: ${hStack}; }\n\n`;
     heads.forEach(r => out += `${r.key}, .${r.key} { font-size: ${v(r)}; }\n`);
     out += `\n`;
     disp.forEach(r => out += `.${r.key} { font-size: ${v(r)}; }\n`);
@@ -326,7 +445,7 @@ pre { margin: 0; background: var(--code-bg); color: var(--code-ink); border-radi
   }
 
   ["input", "change"].forEach(evt => {
-    for (const k of ["base", "unit", "hScale", "dScale", "hCustom", "dCustom", "decimals", "sample"]) {
+    for (const k of SAVED_KEYS) {
       els[k].addEventListener(evt, render);
     }
   });
